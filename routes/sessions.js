@@ -56,6 +56,7 @@ router.post('/', [
     authenticate,
     requireFormateur,
     body('formation').notEmpty().withMessage('Formation is required'),
+    body('level').notEmpty().withMessage('Level is required'),
     body('date').isISO8601().withMessage('Valid date is required'),
     body('startTime').notEmpty().withMessage('Start time is required'),
     body('endTime').notEmpty().withMessage('End time is required'),
@@ -68,7 +69,7 @@ router.post('/', [
             return res.status(400).json({ errors: errors.array() });
         }
 
-        const { formation, date, startTime, endTime, formateur, maxParticipants } = req.body;
+        const { formation, level, date, startTime, endTime, formateur, maxParticipants } = req.body;
 
         // Verify formation exists
         const formationExists = await Formation.findById(formation);
@@ -78,6 +79,7 @@ router.post('/', [
 
         const session = new Session({
             formation,
+            level,
             date,
             startTime,
             endTime,
@@ -122,7 +124,8 @@ router.put('/:id', [
         }
 
         // Update fields
-        const { date, startTime, endTime, maxParticipants } = req.body;
+        const { level, date, startTime, endTime, maxParticipants } = req.body;
+        if (level) session.level = level;
         if (date) session.date = date;
         if (startTime) session.startTime = startTime;
         if (endTime) session.endTime = endTime;
@@ -231,6 +234,28 @@ router.post('/:id/unenroll', authenticate, async (req, res) => {
         });
     } catch (error) {
         console.error('Unenroll error:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// @route   GET /api/sessions/missed
+// @desc    Get missed sessions for the logged-in participant
+// @access  Private
+router.get('/missed', authenticate, async (req, res) => {
+    try {
+        const Attendance = require('../models/Attendance');
+        const missedAttendance = await Attendance.find({
+            participant: req.user._id,
+            status: 'absent'
+        }).populate({
+            path: 'session',
+            populate: { path: 'formation', select: 'title' }
+        });
+
+        const missedSessions = missedAttendance.map(a => a.session).filter(s => s !== null);
+        res.json({ sessions: missedSessions });
+    } catch (error) {
+        console.error('Get missed sessions error:', error);
         res.status(500).json({ error: 'Server error' });
     }
 });

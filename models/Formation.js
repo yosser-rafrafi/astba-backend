@@ -16,6 +16,11 @@ const formationSchema = new mongoose.Schema({
         required: [true, 'Duration is required'],
         min: [1, 'Duration must be at least 1 hour']
     },
+    startDate: {
+        type: Date,
+        default: Date.now,
+        required: [true, 'Start date is required']
+    },
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',

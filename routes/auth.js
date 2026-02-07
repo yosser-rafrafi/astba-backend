@@ -17,7 +17,7 @@ router.post('/signup', [
     body('name').trim().notEmpty().withMessage('Name is required'),
     body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
     body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-    body('role').optional().isIn(['admin', 'formateur', 'participant']).withMessage('Invalid role')
+    body('role').optional().isIn(['admin', 'formateur', 'Responsable']).withMessage('Invalid role')
 ], async (req, res) => {
     try {
         // Validate request
@@ -39,7 +39,7 @@ router.post('/signup', [
             name,
             email,
             password,
-            role: role || 'participant'
+            role: role || 'Responsable'
         });
 
         await user.save();

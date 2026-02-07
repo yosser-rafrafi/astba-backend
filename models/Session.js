@@ -6,6 +6,11 @@ const sessionSchema = new mongoose.Schema({
         ref: 'Formation',
         required: [true, 'Formation is required']
     },
+    level: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Level',
+        required: [true, 'Level is required']
+    },
     date: {
         type: Date,
         required: [true, 'Session date is required']
