@@ -76,13 +76,43 @@ router.get('/dashboard', authenticate, async (req, res) => {
                 if (status === 'present') attended++;
                 if (status === 'absent') missed++;
 
-                // Attach status to session object for frontend if needed
+                // Attach status to session object for frontend
                 session.attendanceStatus = status;
             });
+
+            // Calculate Level Details
+            const levelMap = {};
+            f.levels.forEach(lvlTitle => {
+                levelMap[lvlTitle] = {
+                    title: lvlTitle,
+                    total: 0,
+                    attended: 0,
+                    status: 'pending' // pending, in_progress, validated
+                };
+            });
+
+            f.sessions.forEach(session => {
+                const lvlTitle = session.level?.title;
+                if (lvlTitle && levelMap[lvlTitle]) {
+                    levelMap[lvlTitle].total++;
+                    if (attendanceMap[session._id.toString()] === 'present') {
+                        levelMap[lvlTitle].attended++;
+                    }
+                }
+            });
+
+            const levelsDetails = Object.values(levelMap).map(lvl => {
+                if (lvl.total === 0) return { ...lvl, status: 'locked' }; // Or pending
+                if (lvl.attended === lvl.total) return { ...lvl, status: 'validated' };
+                if (lvl.attended > 0) return { ...lvl, status: 'in_progress' };
+                return { ...lvl, status: 'pending' };
+            });
+
 
             return {
                 ...f,
                 levels: Array.from(f.levels),
+                levelsDetails, // Add this
                 totalSessions: f.sessions.length,
                 attendedSessions: attended,
                 missedSessions: missed,
@@ -94,7 +124,19 @@ router.get('/dashboard', authenticate, async (req, res) => {
         const totalFormations = formations.length;
         const totalSessionsEnrolled = sessions.length;
         const totalSessionsAttended = formations.reduce((acc, curr) => acc + curr.attendedSessions, 0);
+
         const totalMissedSessions = formations.reduce((acc, curr) => acc + curr.missedSessions, 0);
+
+        // Extract missed sessions details
+        const missedSessionsList = sessions
+            .filter(s => attendanceMap[s._id.toString()] === 'absent')
+            .map(s => ({
+                id: s._id,
+                title: s.formation.title,
+                date: s.date,
+                startTime: s.startTime,
+                formateur: s.formateur?.name || 'Instructeur'
+            }));
 
         // 6. Get upcoming sessions
         const now = new Date();
@@ -120,6 +162,7 @@ router.get('/dashboard', authenticate, async (req, res) => {
                 totalMissedSessions
             },
             formations,
+            missedSessions: missedSessionsList,
             upcomingSessions
         });
 
