@@ -29,13 +29,17 @@ router.get('/assigned', authenticate, requireFormateur, async (req, res) => {
 
         // 1. Get formations where user is the formateur in a session
         const sessions = await Session.find({ formateur: req.user._id });
-        const assignedFromSessions = sessions.map(s => s.formation?.toString()).filter(id => id);
+        const fromSessions = sessions.map(s => s.formation?.toString()).filter(id => id);
 
-        // 2. Get formations (Assigned via Session OR Created by this user)
+        // 2. Get unique IDs
+        const assignedIds = [...new Set(fromSessions)];
+
+        // 3. Get formations (Assigned via Session OR Created by this user OR Default Formateur)
         const formations = await Formation.find({
             $or: [
-                { _id: { $in: assignedFromSessions } },
-                { createdBy: req.user._id }
+                { _id: { $in: assignedIds } },
+                { createdBy: req.user._id },
+                { defaultFormateur: req.user._id }
             ]
         }).populate('createdBy', 'name email role');
 
