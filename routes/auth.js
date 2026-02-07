@@ -88,12 +88,27 @@ router.post('/login', [
             return res.status(401).json({ error: 'Invalid email or password' });
         }
 
-        // Check status
-        if (user.status !== 'active') {
+        // Normalize status (trim, remove trailing punctuation) so "pending," etc. match
+        const status = (user.status || '').toString().trim().replace(/[,.\s]+$/, '').toLowerCase();
+
+        if (status === 'pending') {
             return res.status(403).json({
-                error: user.status === 'pending'
-                    ? 'Account pending approval. Please wait for administrator verification.'
-                    : `Account is ${user.status}. Please contact support.`
+                success: false,
+                status: 'pending',
+                message: 'Votre compte est en attente d\'approbation. Un administrateur examine actuellement vos informations.',
+                user: {
+                    id: user._id,
+                    name: user.name,
+                    email: user.email,
+                    role: user.role,
+                    status: 'pending'
+                }
+            });
+        }
+
+        if (status !== 'active') {
+            return res.status(403).json({
+                error: `Account is ${status}. Please contact support.`
             });
         }
 

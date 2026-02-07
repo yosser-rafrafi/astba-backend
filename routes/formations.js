@@ -144,7 +144,7 @@ router.put('/:id', [
         }
 
         // Update fields
-        const { title, description, duration, startDate, active } = req.body;
+        const { title, description, duration, startDate, active, defaultFormateur } = req.body;
         if (title) formation.title = title;
         if (description) formation.description = description;
         if (duration) formation.duration = duration;
@@ -255,6 +255,69 @@ router.get('/progress/:id', authenticate, async (req, res) => {
         });
     } catch (error) {
         console.error('Get progress error:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// @route   GET /api/formations/:id/progress-levels/:userId
+// @desc    Get per-level progress for a user in a formation (niveaux validés, séances par niveau)
+// @access  Private (Formateur/Admin/Responsable or own)
+router.get('/:id/progress-levels/:userId', authenticate, async (req, res) => {
+    try {
+        if (req.user._id.toString() !== req.params.userId &&
+            req.user.role !== 'formateur' && req.user.role !== 'admin' &&
+            req.user.role !== 'Responsable' && req.user.role !== 'responsable') {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+        const Level = require('../models/Level');
+        const Session = require('../models/Session');
+        const Attendance = require('../models/Attendance');
+
+        const levels = await Level.find({ formation: req.params.id }).sort({ order: 1 });
+        const levelIds = levels.map(l => l._id);
+
+        const sessionsByLevel = await Session.find({ formation: req.params.id }).select('level');
+        const totalByLevel = {};
+        sessionsByLevel.forEach(s => {
+            const lid = s.level?.toString();
+            if (lid) totalByLevel[lid] = (totalByLevel[lid] || 0) + 1;
+        });
+
+        const sessionIds = sessionsByLevel.map(s => s._id);
+        const attended = await Attendance.find({
+            session: { $in: sessionIds },
+            participant: req.params.userId,
+            status: { $in: ['present', 'late'] }
+        });
+
+        const sessionToLevel = {};
+        sessionsByLevel.forEach(s => {
+            sessionToLevel[s._id.toString()] = s.level?.toString();
+        });
+        const attendedByLevel = {};
+        attended.forEach(a => {
+            const lid = sessionToLevel[a.session?.toString()];
+            if (lid) attendedByLevel[lid] = (attendedByLevel[lid] || 0) + 1;
+        });
+
+        const levelsProgress = levels.map(level => {
+            const lid = level._id.toString();
+            const total = totalByLevel[lid] || 0;
+            const attendedCount = attendedByLevel[lid] || 0;
+            return {
+                levelId: level._id,
+                order: level.order,
+                title: level.title,
+                totalSessions: total,
+                attendedSessions: attendedCount,
+                remainingSessions: Math.max(0, total - attendedCount),
+                validated: total > 0 && attendedCount >= total
+            };
+        });
+
+        res.json({ formationId: req.params.id, userId: req.params.userId, levels: levelsProgress });
+    } catch (error) {
+        console.error('Get progress levels error:', error);
         res.status(500).json({ error: 'Server error' });
     }
 });
