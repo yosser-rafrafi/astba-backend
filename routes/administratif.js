@@ -6,12 +6,13 @@ const Session = require('../models/Session');
 const Attendance = require('../models/Attendance');
 const Level = require('../models/Level');
 const Certificate = require('../models/Certificate');
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const { authenticate, requireAdmin, requireRoles } = require('../middleware/auth');
+const PDFDocument = require('pdfkit');
 
 // @route   GET /api/admin/users
 // @desc    Get all users
 // @access  Private (Admin only)
-router.get('/users', authenticate, requireAdmin, async (req, res) => {
+router.get('/users', authenticate, requireRoles('admin', 'Responsable'), async (req, res) => {
     try {
         const users = await User.find().select('-password').sort({ createdAt: -1 });
         res.json({ users });
@@ -24,9 +25,14 @@ router.get('/users', authenticate, requireAdmin, async (req, res) => {
 // @route   POST /api/admin/users
 // @desc    Create new user profile
 // @access  Private (Admin only)
-router.post('/users', authenticate, requireAdmin, async (req, res) => {
+router.post('/users', authenticate, requireRoles('admin', 'Responsable'), async (req, res) => {
     try {
         const { name, email, password, role } = req.body;
+
+        // Security: Responsable can only create students
+        if (req.user.role !== 'admin' && role !== 'student') {
+            return res.status(403).json({ error: 'Vous ne pouvez créer que des comptes étudiants.' });
+        }
 
         let user = await User.findOne({ email });
         if (user) {
@@ -58,7 +64,7 @@ router.post('/users', authenticate, requireAdmin, async (req, res) => {
 // @route   PUT /api/admin/users/:id
 // @desc    Update user profile
 // @access  Private (Admin only)
-router.put('/users/:id', authenticate, requireAdmin, async (req, res) => {
+router.put('/users/:id', authenticate, requireRoles('admin', 'Responsable'), async (req, res) => {
     try {
         const { name, email, role } = req.body;
         const user = await User.findById(req.params.id);
@@ -92,7 +98,7 @@ router.put('/users/:id', authenticate, requireAdmin, async (req, res) => {
 // @route   GET /api/admin/history/:userId
 // @desc    Get full history of formations and attendance per user
 // @access  Private (Admin only)
-router.get('/history/:userId', authenticate, requireAdmin, async (req, res) => {
+router.get('/history/:userId', authenticate, requireRoles('admin', 'Responsable'), async (req, res) => {
     try {
         const attendances = await Attendance.find({ participant: req.params.userId })
             .populate({
@@ -114,7 +120,7 @@ router.get('/history/:userId', authenticate, requireAdmin, async (req, res) => {
 // @route   GET /api/admin/certification/eligible/:userId/:formationId
 // @desc    Check if user is eligible for certification (All levels completed + All sessions attended)
 // @access  Private (Admin only)
-router.get('/certification/eligible/:userId/:formationId', authenticate, requireAdmin, async (req, res) => {
+router.get('/certification/eligible/:userId/:formationId', authenticate, requireRoles('admin', 'Responsable'), async (req, res) => {
     try {
         // 1. Get all levels for this formation
         const levels = await Level.find({ formation: req.params.formationId });
@@ -157,7 +163,7 @@ router.get('/certification/eligible/:userId/:formationId', authenticate, require
 // @route   POST /api/admin/certification/generate
 // @desc    Generate certificate
 // @access  Private (Admin only)
-router.post('/certification/generate', authenticate, requireAdmin, async (req, res) => {
+router.post('/certification/generate', authenticate, requireRoles('admin', 'Responsable'), async (req, res) => {
     try {
         const { userId, formationId } = req.body;
 
@@ -176,6 +182,120 @@ router.post('/certification/generate', authenticate, requireAdmin, async (req, r
         res.status(201).json({ message: 'Certificate generated successfully', certificate });
     } catch (error) {
         console.error('Generate certificate error:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// @route   GET /api/admin/stats
+// @desc    Get global statistics
+// @access  Private (Admin only)
+router.get('/stats', authenticate, requireRoles('admin', 'Responsable'), async (req, res) => {
+    try {
+        const totalUsers = await User.countDocuments();
+        const pendingUsers = await User.countDocuments({ status: 'pending' });
+        const formations = await Formation.countDocuments();
+        const certificates = await Certificate.countDocuments();
+
+        res.json({
+            users: { total: totalUsers, pending: pendingUsers },
+            formations,
+            certificates
+        });
+    } catch (error) {
+        console.error('Get stats error:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// @route   PUT /api/admin/users/:id/status
+// @desc    Update user status (Approve, Suspend, etc.)
+// @access  Private (Admin only)
+router.put('/users/:id/status', authenticate, requireRoles('admin', 'Responsable'), async (req, res) => {
+    try {
+        const { status } = req.body;
+        if (!['active', 'suspended', 'rejected', 'pending'].includes(status)) {
+            return res.status(400).json({ error: 'Invalid status' });
+        }
+
+        const user = await User.findByIdAndUpdate(
+            req.params.id,
+            { status },
+            { new: true }
+        ).select('-password');
+
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        res.json({ message: 'Status updated successfully', user });
+    } catch (error) {
+        console.error('Update status error:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// @route   GET /api/admin/certification/download/:id
+// @desc    Download certificate PDF
+// @access  Private (Admin & Responsable)
+router.get('/certification/download/:id', authenticate, requireRoles('admin', 'Responsable'), async (req, res) => {
+    try {
+        const certificate = await Certificate.findById(req.params.id)
+            .populate('user')
+            .populate('formation');
+
+        if (!certificate) return res.status(404).json({ error: 'Certificate not found' });
+
+        const doc = new PDFDocument({ size: 'A4', layout: 'landscape' });
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename=Certificat-${certificate.certificateId}.pdf`);
+
+        doc.pipe(res);
+
+        // --- PDF DESIGN ---
+        // Header
+        doc.fontSize(24).font('Helvetica-Bold').text('ASTBA FORMATION', { align: 'center' });
+        doc.moveDown();
+        doc.fontSize(10).font('Helvetica').text('Académie des Sciences et Technologies', { align: 'center' });
+        doc.moveDown(2);
+
+        // Title
+        doc.rect(50, 150, 742, 2).fill('#334155'); // Decorative line
+        doc.moveDown(2);
+        doc.fontSize(30).fillColor('#1e293b').font('Helvetica-Bold').text('CERTIFICAT DE RÉUSSITE', { align: 'center' });
+        doc.moveDown();
+
+        // Body
+        doc.fontSize(16).font('Helvetica').fillColor('black').text('Ce certificat est fièrement décerné à :', { align: 'center' });
+        doc.moveDown();
+
+        doc.fontSize(28).font('Helvetica-Bold').fillColor('#2563eb').text(certificate.user.name.toUpperCase(), { align: 'center' });
+        doc.moveDown();
+
+        doc.fontSize(16).font('Helvetica').fillColor('black').text('Pour avoir validé avec succès tous les niveaux de la formation :', { align: 'center' });
+        doc.moveDown();
+
+        doc.fontSize(24).font('Helvetica-Bold').fillColor('#0f172a').text(certificate.formation.title, { align: 'center' });
+        doc.moveDown(3);
+
+        // Footer / Signature
+        const date = new Date(certificate.issuedAt).toLocaleDateString('fr-FR', {
+            year: 'numeric', month: 'long', day: 'numeric'
+        });
+
+        doc.fontSize(12).font('Helvetica').text(`Fait à Tunis, le ${date}`, 100, 450);
+
+        doc.fontSize(12).font('Helvetica-Bold').text('Le Responsable de Formation', 550, 450);
+        // Placeholder for signature
+        doc.fontSize(10).font('Helvetica-Oblique').text('(Signature numérique)', 550, 500);
+
+        doc.rect(50, 520, 742, 2).fill('#334155'); // Bottom line
+        doc.fontSize(9).text(`ID Certificat: ${certificate.certificateId}`, 50, 530, { align: 'center', color: 'gray' });
+
+        doc.end();
+
+    } catch (error) {
+        console.error('Download PDF error:', error);
         res.status(500).json({ error: 'Server error' });
     }
 });

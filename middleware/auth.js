@@ -38,7 +38,7 @@ const requireAdmin = (req, res, next) => {
 
 // Check if user has formateur or admin role
 const requireFormateur = (req, res, next) => {
-    if (req.user.role !== 'formateur' && req.user.role !== 'admin') {
+    if (req.user.role !== 'formateur' && req.user.role !== 'admin' && req.user.role !== 'Responsable' && req.user.role !== 'responsable') {
         return res.status(403).json({ error: 'Access denied. Formateur or Admin role required.' });
     }
     next();

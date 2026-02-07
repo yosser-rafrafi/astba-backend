@@ -44,17 +44,14 @@ router.post('/signup', [
 
         await user.save();
 
-        // Generate token
-        const token = generateToken(user._id);
-
         res.status(201).json({
-            message: 'User registered successfully',
-            token,
+            message: 'User registered successfully. Please wait for admin approval.',
             user: {
                 id: user._id,
                 name: user.name,
                 email: user.email,
-                role: user.role
+                role: user.role,
+                status: user.status
             }
         });
     } catch (error) {
@@ -91,6 +88,15 @@ router.post('/login', [
             return res.status(401).json({ error: 'Invalid email or password' });
         }
 
+        // Check status
+        if (user.status !== 'active') {
+            return res.status(403).json({
+                error: user.status === 'pending'
+                    ? 'Account pending approval. Please wait for administrator verification.'
+                    : `Account is ${user.status}. Please contact support.`
+            });
+        }
+
         // Generate token
         const token = generateToken(user._id);
 
@@ -101,7 +107,8 @@ router.post('/login', [
                 id: user._id,
                 name: user.name,
                 email: user.email,
-                role: user.role
+                role: user.role,
+                status: user.status
             }
         });
     } catch (error) {
@@ -115,16 +122,49 @@ router.post('/login', [
 // @access  Private
 router.get('/me', authenticate, async (req, res) => {
     try {
+        const user = await User.findById(req.user._id).select('-password');
+        res.json({ user });
+    } catch (error) {
+        console.error('Get user error:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// @route   PUT /api/auth/me
+// @desc    Update current user profile
+// @access  Private
+router.put('/me', authenticate, async (req, res) => {
+    try {
+        const { name, email, password, profileImage } = req.body;
+        const user = await User.findById(req.user._id);
+
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        if (name) user.name = name;
+        if (email) user.email = email;
+        if (profileImage !== undefined) user.profileImage = profileImage;
+        if (password) user.password = password;
+
+        await user.save();
+
         res.json({
+            message: 'Profile updated successfully',
             user: {
-                id: req.user._id,
-                name: req.user.name,
-                email: req.user.email,
-                role: req.user.role
+                id: user._id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                status: user.status,
+                profileImage: user.profileImage
             }
         });
     } catch (error) {
-        console.error('Get user error:', error);
+        console.error('Update profile error:', error);
+        if (error.code === 11000) {
+            return res.status(400).json({ error: 'Email already in use' });
+        }
         res.status(500).json({ error: 'Server error' });
     }
 });
