@@ -6,7 +6,7 @@ const Session = require('../models/Session');
 const Attendance = require('../models/Attendance');
 const Level = require('../models/Level');
 const Certificate = require('../models/Certificate');
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const { authenticate, requireAdmin, requireFormateur } = require('../middleware/auth');
 
 // @route   GET /api/admin/users
 // @desc    Get all users
@@ -17,6 +17,19 @@ router.get('/users', authenticate, requireAdmin, async (req, res) => {
         res.json({ users });
     } catch (error) {
         console.error('Get users error:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// @route   GET /api/admin/formateurs
+// @desc    Get only formateurs
+// @access  Private (Admin or Responsable)
+router.get('/formateurs', authenticate, requireFormateur, async (req, res) => {
+    try {
+        const formateurs = await User.find({ role: 'formateur' }).select('-password').sort({ name: 1 });
+        res.json({ users: formateurs });
+    } catch (error) {
+        console.error('Get formateurs error:', error);
         res.status(500).json({ error: 'Server error' });
     }
 });
@@ -118,7 +131,7 @@ router.get('/certification/eligible/:userId/:formationId', authenticate, require
     try {
         // 1. Get all levels for this formation
         const levels = await Level.find({ formation: req.params.formationId });
-        if (levels.length === 0) return res.status(404).json({ eligible: false, reason: 'Formation has no levels defined' });
+        if (levels.length === 0) return res.json({ eligible: false, reason: 'La formation n\'a pas encore de niveaux définis.' });
 
         // 2. Get all sessions for this formation
         const sessions = await Session.find({ formation: req.params.formationId });

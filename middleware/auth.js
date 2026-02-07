@@ -36,10 +36,11 @@ const requireAdmin = (req, res, next) => {
     next();
 };
 
-// Check if user has formateur or admin role
+// Check if user has management permissions (formateur, Responsable, or admin)
 const requireFormateur = (req, res, next) => {
-    if (req.user.role !== 'formateur' && req.user.role !== 'admin') {
-        return res.status(403).json({ error: 'Access denied. Formateur or Admin role required.' });
+    const authorizedRoles = ['formateur', 'admin', 'Responsable'];
+    if (!authorizedRoles.includes(req.user.role)) {
+        return res.status(403).json({ error: 'Access denied. Staff role required.' });
     }
     next();
 };

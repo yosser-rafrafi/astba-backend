@@ -182,26 +182,45 @@ router.delete('/:id', authenticate, requireFormateur, async (req, res) => {
 });
 
 // @route   GET /api/formations/progress/:id
-// @desc    Get participant progress for a specific formation
+// @route   GET /api/formations/progress/:id/:userId
+// @desc    Get participant progress for a formation
 // @access  Private
-router.get('/progress/:id', authenticate, async (req, res) => {
+router.get(['/progress/:id', '/progress/:id/:userId'], authenticate, async (req, res) => {
     try {
         const Session = require('../models/Session');
         const Attendance = require('../models/Attendance');
 
-        const totalSessions = await Session.find({ formation: req.params.id });
+        const formationId = req.params.id;
+        const targetUserId = req.params.userId || req.user._id;
+
+        // Security check: Only Formateur/Admin can view others' progress
+        if (req.params.userId && req.params.userId !== req.user._id.toString()) {
+            if (req.user.role !== 'formateur' && req.user.role !== 'admin') {
+                return res.status(403).json({ error: 'Access denied' });
+            }
+        }
+
+        const totalSessions = await Session.find({ formation: formationId });
         const sessionIds = totalSessions.map(s => s._id);
 
         const attendedAttendance = await Attendance.find({
             session: { $in: sessionIds },
-            participant: req.user._id,
+            participant: targetUserId,
             status: { $in: ['present', 'late'] }
         });
 
+        const missedAttendance = await Attendance.find({
+            session: { $in: sessionIds },
+            participant: targetUserId,
+            status: 'absent'
+        });
+
         res.json({
-            formationId: req.params.id,
+            formationId,
             totalSessions: totalSessions.length,
             attendedSessions: attendedAttendance.length,
+            missedSessions: missedAttendance.length,
+            remainingSessions: totalSessions.length - attendedAttendance.length - missedAttendance.length,
             progress: totalSessions.length > 0
                 ? Math.round((attendedAttendance.length / totalSessions.length) * 100)
                 : 0
