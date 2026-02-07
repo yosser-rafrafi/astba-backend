@@ -39,6 +39,18 @@ router.post('/users', authenticate, requireAdmin, async (req, res) => {
         res.status(201).json({ message: 'User created successfully', user });
     } catch (error) {
         console.error('Create user error:', error);
+
+        // Handle Mongoose Validation Errors
+        if (error.name === 'ValidationError') {
+            const messages = Object.values(error.errors).map(val => val.message);
+            return res.status(400).json({ error: messages.join(', ') });
+        }
+
+        // Handle Duplicate Email Error (MongoError code 11000)
+        if (error.code === 11000) {
+            return res.status(400).json({ error: 'Un utilisateur avec cet email existe déjà.' });
+        }
+
         res.status(500).json({ error: 'Server error' });
     }
 });
@@ -63,6 +75,16 @@ router.put('/users/:id', authenticate, requireAdmin, async (req, res) => {
         res.json({ message: 'User updated successfully', user });
     } catch (error) {
         console.error('Update user error:', error);
+
+        if (error.name === 'ValidationError') {
+            const messages = Object.values(error.errors).map(val => val.message);
+            return res.status(400).json({ error: messages.join(', ') });
+        }
+
+        if (error.code === 11000) {
+            return res.status(400).json({ error: 'Cet email est déjà utilisé par un autre utilisateur.' });
+        }
+
         res.status(500).json({ error: 'Server error' });
     }
 });
