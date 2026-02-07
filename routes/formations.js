@@ -89,13 +89,18 @@ router.post('/', [
 
         const { title, description, duration, startDate, defaultFormateur } = req.body;
 
+        const formationCount = await Formation.countDocuments();
+        const patterns = ['dots', 'hatching', 'triangles', 'diamonds', 'stripes-h', 'stripes-v', 'circles', 'grid', 'chevrons', 'waves', 'zigzag', 'cross', 'bricks', 'hexagons'];
+        const pattern = patterns[formationCount % patterns.length];
+
         const formation = new Formation({
             title,
             description,
             duration,
             startDate,
             createdBy: req.user._id,
-            defaultFormateur: defaultFormateur || null
+            defaultFormateur: defaultFormateur || null,
+            pattern
         });
 
         await formation.save();

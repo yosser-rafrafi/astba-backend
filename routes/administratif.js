@@ -207,6 +207,57 @@ router.get('/stats', authenticate, requireRoles('admin', 'Responsable', 'respons
     }
 });
 
+// @route   GET /api/admin/stats/charts
+// @desc    Get chart data: formation distribution & platform activity
+// @access  Private (Admin only)
+router.get('/stats/charts', authenticate, requireRoles('admin', 'Responsable', 'responsable'), async (req, res) => {
+    try {
+        // 1. Formation distribution: participants count per formation (with formation colors & patterns)
+        const FORMATION_PALETTE = ['#ef4444', '#f97316', '#eab308', '#84cc16', '#22c55e', '#14b8a6', '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#64748b', '#0d9488', '#2563eb', '#7c3aed', '#be185d'];
+        const formations = await Formation.find({ active: true }).select('title color pattern');
+        const formationDistribution = { labels: [], values: [], colors: [], patterns: [] };
+
+        for (let i = 0; i < formations.length; i++) {
+            const f = formations[i];
+            const sessions = await Session.find({ formation: f._id });
+            const uniqueParticipants = new Set();
+            sessions.forEach(s => {
+                (s.participants || []).forEach(p => uniqueParticipants.add(p.toString()));
+            });
+            formationDistribution.labels.push(f.title);
+            formationDistribution.values.push(uniqueParticipants.size);
+            formationDistribution.colors.push(f.color || FORMATION_PALETTE[i % FORMATION_PALETTE.length]);
+            formationDistribution.patterns.push(f.pattern || 'dots');
+        }
+
+        // 2. Platform activity: sessions count per month (last 6 months)
+        const monthLabels = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
+        const now = new Date();
+        const platformActivity = { labels: [], values: [] };
+
+        for (let i = 5; i >= 0; i--) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const start = new Date(d.getFullYear(), d.getMonth(), 1);
+            const end = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
+
+            const count = await Session.countDocuments({
+                date: { $gte: start, $lte: end }
+            });
+
+            platformActivity.labels.push(monthLabels[d.getMonth()]);
+            platformActivity.values.push(count);
+        }
+
+        res.json({
+            formationDistribution,
+            platformActivity
+        });
+    } catch (error) {
+        console.error('Get charts stats error:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 // @route   PUT /api/admin/users/:id/status
 // @desc    Update user status (Approve, Suspend, etc.)
 // @access  Private (Admin only)
