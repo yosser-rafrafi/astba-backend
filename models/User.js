@@ -22,8 +22,17 @@ const userSchema = new mongoose.Schema({
     },
     role: {
         type: String,
-        enum: ['admin', 'formateur', 'Responsable'],
-        default: 'Responsable'
+        enum: ['admin', 'formateur', 'Responsable', 'student'],
+        default: 'student'
+    },
+    status: {
+        type: String,
+        enum: ['pending', 'active', 'suspended', 'rejected'],
+        default: 'pending'
+    },
+    profileImage: {
+        type: String, // URL or Base64
+        default: ''
     }
 }, {
     timestamps: true

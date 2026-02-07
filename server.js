@@ -13,7 +13,8 @@ app.use(cors({
   origin: true, // Allow all origins in development
   credentials: true
 }));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // MongoDB Connection
 mongoose.connect(process.env.MONGO_URI)
@@ -26,6 +27,7 @@ app.use('/api/formations', require('./routes/formations'));
 app.use('/api/sessions', require('./routes/sessions'));
 app.use('/api/attendance', require('./routes/attendance'));
 app.use('/api/admin', require('./routes/administratif'));
+app.use('/api/student', require('./routes/student'));
 
 // Health check route
 app.get('/', (req, res) => {

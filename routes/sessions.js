@@ -77,14 +77,32 @@ router.post('/', [
             return res.status(404).json({ error: 'Formation not found' });
         }
 
+        // ASTBA Compliance: Check max 6 sessions per level
+        const existingSessionsCount = await Session.countDocuments({ level });
+        if (existingSessionsCount >= 6) {
+            return res.status(400).json({
+                error: 'Maximum 6 sessions per level reached (ASTBA requirement)',
+                currentCount: existingSessionsCount,
+                maxAllowed: 6
+            });
+        }
+
+        // Auto-enroll students from existing sessions of this formation
+        const existingSession = await Session.findOne({ formation }).select('participants');
+        const initialParticipants = existingSession ? existingSession.participants : [];
+
+        // Use provided formateur or fall back to formation's default
+        const sessionFormateur = formateur || formationExists.defaultFormateur;
+
         const session = new Session({
             formation,
             level,
             date,
             startTime,
             endTime,
-            formateur,
-            maxParticipants: maxParticipants || 30
+            formateur: sessionFormateur,
+            maxParticipants: maxParticipants || 30,
+            participants: initialParticipants
         });
 
         await session.save();

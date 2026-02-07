@@ -15,7 +15,34 @@ router.get('/session/:sessionId', authenticate, async (req, res) => {
             .populate('markedBy', 'name email')
             .sort({ createdAt: -1 });
 
-        res.json({ attendance });
+        // Calculate stats (Absences per participant in this formation)
+        const session = await Session.findById(req.params.sessionId);
+        let stats = {};
+
+        if (session) {
+            const formationId = session.formation;
+            const allSessions = await Session.find({ formation: formationId }).select('_id');
+            const sessionIds = allSessions.map(s => s._id);
+
+            const absenceCounts = await Attendance.aggregate([
+                {
+                    $match: {
+                        session: { $in: sessionIds },
+                        status: 'absent'
+                    }
+                },
+                {
+                    $group: {
+                        _id: '$participant',
+                        count: { $sum: 1 }
+                    }
+                }
+            ]);
+
+            absenceCounts.forEach(s => stats[s._id] = s.count);
+        }
+
+        res.json({ attendance, stats });
     } catch (error) {
         console.error('Get attendance error:', error);
         res.status(500).json({ error: 'Server error' });
@@ -30,7 +57,9 @@ router.get('/participant/:participantId', authenticate, async (req, res) => {
         // Only allow users to view their own attendance or formateurs/admins to view any
         if (req.user._id.toString() !== req.params.participantId &&
             req.user.role !== 'formateur' &&
-            req.user.role !== 'admin') {
+            req.user.role !== 'admin' &&
+            req.user.role !== 'Responsable' &&
+            req.user.role !== 'responsable') {
             return res.status(403).json({ error: 'Access denied' });
         }
 
@@ -42,6 +71,40 @@ router.get('/participant/:participantId', authenticate, async (req, res) => {
         res.json({ attendance });
     } catch (error) {
         console.error('Get participant attendance error:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// @route   POST /api/attendance/batch
+// @desc    Mark attendance for multiple participants
+// @access  Private (Formateur/Admin)
+router.post('/batch', [
+    authenticate,
+    requireFormateur,
+    body('session').notEmpty(),
+    body('participants').isArray(),
+    body('status').isIn(['present', 'absent', 'late'])
+], async (req, res) => {
+    try {
+        const { session, participants, status } = req.body;
+
+        const operations = participants.map(participantId => ({
+            updateOne: {
+                filter: { session, participant: participantId },
+                update: {
+                    $set: { status, markedBy: req.user._id }
+                },
+                upsert: true
+            }
+        }));
+
+        if (operations.length > 0) {
+            await Attendance.bulkWrite(operations);
+        }
+
+        res.json({ message: 'Batch attendance updated' });
+    } catch (error) {
+        console.error('Batch attendance error:', error);
         res.status(500).json({ error: 'Server error' });
     }
 });

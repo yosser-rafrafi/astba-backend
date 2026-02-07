@@ -17,7 +17,7 @@ router.post('/signup', [
     body('name').trim().notEmpty().withMessage('Name is required'),
     body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
     body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-    body('role').optional().isIn(['admin', 'formateur', 'Responsable']).withMessage('Invalid role')
+    body('role').optional().isIn(['admin', 'formateur', 'Responsable', 'student', 'élève']).withMessage('Invalid role')
 ], async (req, res) => {
     try {
         // Validate request
@@ -44,17 +44,14 @@ router.post('/signup', [
 
         await user.save();
 
-        // Generate token
-        const token = generateToken(user._id);
-
         res.status(201).json({
-            message: 'User registered successfully',
-            token,
+            message: 'User registered successfully. Please wait for admin approval.',
             user: {
                 id: user._id,
                 name: user.name,
                 email: user.email,
-                role: user.role
+                role: user.role,
+                status: user.status
             }
         });
     } catch (error) {
@@ -91,6 +88,30 @@ router.post('/login', [
             return res.status(401).json({ error: 'Invalid email or password' });
         }
 
+        // Normalize status (trim, remove trailing punctuation) so "pending," etc. match
+        const status = (user.status || '').toString().trim().replace(/[,.\s]+$/, '').toLowerCase();
+
+        if (status === 'pending') {
+            return res.status(403).json({
+                success: false,
+                status: 'pending',
+                message: 'Votre compte est en attente d\'approbation. Un administrateur examine actuellement vos informations.',
+                user: {
+                    id: user._id,
+                    name: user.name,
+                    email: user.email,
+                    role: user.role,
+                    status: 'pending'
+                }
+            });
+        }
+
+        if (status !== 'active') {
+            return res.status(403).json({
+                error: `Account is ${status}. Please contact support.`
+            });
+        }
+
         // Generate token
         const token = generateToken(user._id);
 
@@ -101,7 +122,8 @@ router.post('/login', [
                 id: user._id,
                 name: user.name,
                 email: user.email,
-                role: user.role
+                role: user.role,
+                status: user.status
             }
         });
     } catch (error) {
@@ -115,17 +137,102 @@ router.post('/login', [
 // @access  Private
 router.get('/me', authenticate, async (req, res) => {
     try {
-        res.json({
-            user: {
-                id: req.user._id,
-                name: req.user.name,
-                email: req.user.email,
-                role: req.user.role
-            }
-        });
+        const user = await User.findById(req.user._id).select('-password');
+        res.json({ user });
     } catch (error) {
         console.error('Get user error:', error);
         res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// @route   PUT /api/auth/me
+// @desc    Update current user profile
+// @access  Private
+router.put('/me', authenticate, async (req, res) => {
+    try {
+        const { name, email, password, profileImage } = req.body;
+        const user = await User.findById(req.user._id);
+
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        if (name) user.name = name;
+        if (email) user.email = email;
+        if (profileImage !== undefined) user.profileImage = profileImage;
+        if (password) user.password = password;
+
+        await user.save();
+
+        res.json({
+            message: 'Profile updated successfully',
+            user: {
+                id: user._id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                status: user.status,
+                profileImage: user.profileImage
+            }
+        });
+    } catch (error) {
+        console.error('Update profile error:', error);
+        if (error.code === 11000) {
+            return res.status(400).json({ error: 'Email already in use' });
+        }
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// @route   PUT /api/auth/profile
+// @desc    Update own profile
+// @access  Private
+router.put('/profile', [
+    authenticate,
+    body('name').optional().trim().notEmpty().withMessage('Name cannot be empty'),
+    body('email').optional().isEmail().normalizeEmail().withMessage('Valid email is required'),
+    body('password').optional().isLength({ min: 6 }).withMessage('Password must be at least 6 characters')
+], async (req, res) => {
+    try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+
+        const { name, email, password } = req.body;
+        const user = await User.findById(req.user._id);
+
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        // Check if email is already taken by another user
+        if (email && email !== user.email) {
+            const existingUser = await User.findOne({ email });
+            if (existingUser) {
+                return res.status(400).json({ error: 'Email already in use' });
+            }
+            user.email = email;
+        }
+
+        if (name) user.name = name;
+        if (password) user.password = password; // Will be hashed by pre-save hook
+
+        await user.save();
+
+        res.json({
+            message: 'Profile updated successfully',
+            user: {
+                id: user._id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                status: user.status
+            }
+        });
+    } catch (error) {
+        console.error('Profile update error:', error);
+        res.status(500).json({ error: 'Server error during profile update' });
     }
 });
 
