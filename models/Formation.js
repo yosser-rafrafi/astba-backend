@@ -29,6 +29,10 @@ const formationSchema = new mongoose.Schema({
     active: {
         type: Boolean,
         default: true
+    },
+    defaultFormateur: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
     }
 }, {
     timestamps: true

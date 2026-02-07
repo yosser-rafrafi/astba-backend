@@ -83,14 +83,15 @@ router.post('/', [
             return res.status(400).json({ errors: errors.array() });
         }
 
-        const { title, description, duration, startDate } = req.body;
+        const { title, description, duration, startDate, defaultFormateur } = req.body;
 
         const formation = new Formation({
             title,
             description,
             duration,
             startDate,
-            createdBy: req.user._id
+            createdBy: req.user._id,
+            defaultFormateur: defaultFormateur || null
         });
 
         await formation.save();
@@ -149,6 +150,7 @@ router.put('/:id', [
         if (duration) formation.duration = duration;
         if (startDate) formation.startDate = startDate;
         if (active !== undefined) formation.active = active;
+        if (defaultFormateur !== undefined) formation.defaultFormateur = defaultFormateur || null;
 
         await formation.save();
         await formation.populate('createdBy', 'name email role');
@@ -284,40 +286,58 @@ router.get('/:id/stats', authenticate, async (req, res) => {
         const Attendance = require('../models/Attendance');
 
         // 1. Get all sessions for this formation
-        const sessions = await Session.find({ formation: req.params.id });
+        const sessions = await Session.find({ formation: req.params.id })
+            .populate('participants', 'name email');
+
         const sessionIds = sessions.map(s => s._id);
 
         if (sessions.length === 0) {
             return res.json({ students: [] });
         }
 
-        // 2. Get all attendance records for these sessions
+        // 2. Identify all unique participants enrolled in ANY session
+        const enrolledParticipants = new Map();
+        sessions.forEach(session => {
+            session.participants.forEach(p => {
+                if (p && p._id) {
+                    enrolledParticipants.set(p._id.toString(), p);
+                }
+            });
+        });
+
+        // 3. Get all attendance records for these sessions
         const attendances = await Attendance.find({
             session: { $in: sessionIds }
-        }).populate('participant', 'name email');
+        });
 
-        // 3. Aggregate by participant
+        // 4. Aggregate stats
         const studentStats = {};
 
+        // Initialize for all enrolled
+        enrolledParticipants.forEach((user, id) => {
+            studentStats[id] = {
+                user: user,
+                attended: 0,
+                total: sessions.filter(s => s.participants.some(p => p._id.toString() === id)).length || sessions.length // Default to total sessions if logic fails, but filter is better
+            };
+        });
+
+        // Process attendance
         attendances.forEach(record => {
-            const pId = record.participant._id.toString();
-            if (!studentStats[pId]) {
-                studentStats[pId] = {
-                    user: record.participant,
-                    attended: 0,
-                    total: sessions.length // This assumes student should attend ALL sessions of formation. 
-                    // Simplification: yes.
-                };
-            }
-            if (record.status === 'present' || record.status === 'late') {
-                studentStats[pId].attended++;
+            const pId = record.participant.toString();
+            // If student is not in enrolled list (maybe removed?), we might skip or add. 
+            // Let's add if missing (though unlikely if data integrity is good)
+            if (studentStats[pId]) {
+                if (record.status === 'present' || record.status === 'late') {
+                    studentStats[pId].attended++;
+                }
             }
         });
 
         // Convert to array
         const students = Object.values(studentStats).map(stat => ({
             ...stat,
-            progress: Math.round((stat.attended / stat.total) * 100)
+            progress: stat.total > 0 ? Math.round((stat.attended / stat.total) * 100) : 0
         }));
 
         res.json({ students });

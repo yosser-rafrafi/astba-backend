@@ -12,7 +12,7 @@ const PDFDocument = require('pdfkit');
 // @route   GET /api/admin/users
 // @desc    Get all users
 // @access  Private (Admin only)
-router.get('/users', authenticate, requireRoles('admin', 'Responsable'), async (req, res) => {
+router.get('/users', authenticate, requireRoles('admin', 'Responsable', 'responsable'), async (req, res) => {
     try {
         const users = await User.find().select('-password').sort({ createdAt: -1 });
         res.json({ users });
@@ -25,7 +25,7 @@ router.get('/users', authenticate, requireRoles('admin', 'Responsable'), async (
 // @route   POST /api/admin/users
 // @desc    Create new user profile
 // @access  Private (Admin only)
-router.post('/users', authenticate, requireRoles('admin', 'Responsable'), async (req, res) => {
+router.post('/users', authenticate, requireRoles('admin', 'Responsable', 'responsable'), async (req, res) => {
     try {
         const { name, email, password, role } = req.body;
 
@@ -64,7 +64,7 @@ router.post('/users', authenticate, requireRoles('admin', 'Responsable'), async 
 // @route   PUT /api/admin/users/:id
 // @desc    Update user profile
 // @access  Private (Admin only)
-router.put('/users/:id', authenticate, requireRoles('admin', 'Responsable'), async (req, res) => {
+router.put('/users/:id', authenticate, requireRoles('admin', 'Responsable', 'responsable'), async (req, res) => {
     try {
         const { name, email, role } = req.body;
         const user = await User.findById(req.params.id);
@@ -98,7 +98,7 @@ router.put('/users/:id', authenticate, requireRoles('admin', 'Responsable'), asy
 // @route   GET /api/admin/history/:userId
 // @desc    Get full history of formations and attendance per user
 // @access  Private (Admin only)
-router.get('/history/:userId', authenticate, requireRoles('admin', 'Responsable'), async (req, res) => {
+router.get('/history/:userId', authenticate, requireRoles('admin', 'Responsable', 'responsable'), async (req, res) => {
     try {
         const attendances = await Attendance.find({ participant: req.params.userId })
             .populate({
@@ -120,7 +120,7 @@ router.get('/history/:userId', authenticate, requireRoles('admin', 'Responsable'
 // @route   GET /api/admin/certification/eligible/:userId/:formationId
 // @desc    Check if user is eligible for certification (All levels completed + All sessions attended)
 // @access  Private (Admin only)
-router.get('/certification/eligible/:userId/:formationId', authenticate, requireRoles('admin', 'Responsable'), async (req, res) => {
+router.get('/certification/eligible/:userId/:formationId', authenticate, requireRoles('admin', 'Responsable', 'responsable'), async (req, res) => {
     try {
         // 1. Get all levels for this formation
         const levels = await Level.find({ formation: req.params.formationId });
@@ -163,7 +163,7 @@ router.get('/certification/eligible/:userId/:formationId', authenticate, require
 // @route   POST /api/admin/certification/generate
 // @desc    Generate certificate
 // @access  Private (Admin only)
-router.post('/certification/generate', authenticate, requireRoles('admin', 'Responsable'), async (req, res) => {
+router.post('/certification/generate', authenticate, requireRoles('admin', 'Responsable', 'responsable'), async (req, res) => {
     try {
         const { userId, formationId } = req.body;
 
@@ -189,7 +189,7 @@ router.post('/certification/generate', authenticate, requireRoles('admin', 'Resp
 // @route   GET /api/admin/stats
 // @desc    Get global statistics
 // @access  Private (Admin only)
-router.get('/stats', authenticate, requireRoles('admin', 'Responsable'), async (req, res) => {
+router.get('/stats', authenticate, requireRoles('admin', 'Responsable', 'responsable'), async (req, res) => {
     try {
         const totalUsers = await User.countDocuments();
         const pendingUsers = await User.countDocuments({ status: 'pending' });
@@ -210,7 +210,7 @@ router.get('/stats', authenticate, requireRoles('admin', 'Responsable'), async (
 // @route   PUT /api/admin/users/:id/status
 // @desc    Update user status (Approve, Suspend, etc.)
 // @access  Private (Admin only)
-router.put('/users/:id/status', authenticate, requireRoles('admin', 'Responsable'), async (req, res) => {
+router.put('/users/:id/status', authenticate, requireRoles('admin', 'Responsable', 'responsable'), async (req, res) => {
     try {
         const { status } = req.body;
         if (!['active', 'suspended', 'rejected', 'pending'].includes(status)) {
@@ -237,7 +237,7 @@ router.put('/users/:id/status', authenticate, requireRoles('admin', 'Responsable
 // @route   GET /api/admin/certification/download/:id
 // @desc    Download certificate PDF
 // @access  Private (Admin & Responsable)
-router.get('/certification/download/:id', authenticate, requireRoles('admin', 'Responsable'), async (req, res) => {
+router.get('/certification/download/:id', authenticate, requireRoles('admin', 'Responsable', 'responsable'), async (req, res) => {
     try {
         const certificate = await Certificate.findById(req.params.id)
             .populate('user')
