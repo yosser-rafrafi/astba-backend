@@ -27,6 +27,7 @@ app.use('/api/formations', require('./routes/formations'));
 app.use('/api/sessions', require('./routes/sessions'));
 app.use('/api/attendance', require('./routes/attendance'));
 app.use('/api/admin', require('./routes/administratif'));
+app.use('/api/student', require('./routes/student'));
 
 // Health check route
 app.get('/', (req, res) => {

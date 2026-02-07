@@ -17,7 +17,7 @@ router.post('/signup', [
     body('name').trim().notEmpty().withMessage('Name is required'),
     body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
     body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-    body('role').optional().isIn(['admin', 'formateur', 'Responsable']).withMessage('Invalid role')
+    body('role').optional().isIn(['admin', 'formateur', 'Responsable', 'student', 'élève']).withMessage('Invalid role')
 ], async (req, res) => {
     try {
         // Validate request

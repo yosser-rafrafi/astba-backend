@@ -340,6 +340,48 @@ router.get('/:id/levels', authenticate, async (req, res) => {
     }
 });
 
+// @route   POST /api/formations/:id/levels
+// @desc    Add a new level to a formation
+// @access  Private (Formateur/Admin)
+router.post('/:id/levels', authenticate, requireFormateur, async (req, res) => {
+    try {
+        const Level = require('../models/Level');
+        const levelsCount = await Level.countDocuments({ formation: req.params.id });
+
+        const newLevel = new Level({
+            formation: req.params.id,
+            title: req.body.title || `Niveau ${levelsCount + 1}`,
+            description: req.body.description || '',
+            order: levelsCount + 1
+        });
+
+        await newLevel.save();
+        res.json({ level: newLevel });
+    } catch (error) {
+        console.error('Add level error:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// @route   DELETE /api/formations/levels/:id
+// @desc    Delete a level
+// @access  Private (Formateur/Admin)
+router.delete('/levels/:id', authenticate, requireFormateur, async (req, res) => {
+    try {
+        const Level = require('../models/Level');
+        const Session = require('../models/Session');
+
+        // Optional: Check if sessions exist for this level and delete them or block
+        await Session.deleteMany({ level: req.params.id });
+
+        await Level.findByIdAndDelete(req.params.id);
+        res.json({ message: 'Level deleted' });
+    } catch (error) {
+        console.error('Delete level error:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 // @route   GET /api/formations/:id/stats
 // @desc    Get global stats for a formation (participants, progress)
 // @access  Private (Admin/Formateur)
