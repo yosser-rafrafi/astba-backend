@@ -75,7 +75,7 @@ const formationSchema = new mongoose.Schema({
 });
 
 // Ensure color and pattern are set for existing formations on first save (migration helper)
-formationSchema.pre('save', function (next) {
+formationSchema.pre('save', async function () {
     if (!this.color) {
         this.color = generateFormationColor(this._id?.toString() || this.title);
     }
@@ -83,7 +83,6 @@ formationSchema.pre('save', function (next) {
         const idx = hashSeed(this._id?.toString() || this.title) % FORMATION_PATTERNS.length;
         this.pattern = FORMATION_PATTERNS[idx];
     }
-    next();
 });
 
 module.exports = mongoose.model('Formation', formationSchema);

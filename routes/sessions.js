@@ -16,7 +16,7 @@ router.get('/', authenticate, async (req, res) => {
         }
 
         const sessions = await Session.find(filter)
-            .populate('formation', 'title description duration')
+            .populate('formation', 'title description duration color startDate')
             .populate('formateur', 'name email')
             .populate('participants', 'name email')
             .sort({ date: -1 });
@@ -34,7 +34,7 @@ router.get('/', authenticate, async (req, res) => {
 router.get('/:id', authenticate, async (req, res) => {
     try {
         const session = await Session.findById(req.params.id)
-            .populate('formation', 'title description duration')
+            .populate('formation', 'title description duration color startDate')
             .populate('formateur', 'name email')
             .populate('participants', 'name email');
 
@@ -77,6 +77,18 @@ router.post('/', [
             return res.status(404).json({ error: 'Formation not found' });
         }
 
+        // Session date must be >= formation start date
+        const sessionDate = new Date(date);
+        const formationStartDate = new Date(formationExists.startDate);
+        sessionDate.setHours(0, 0, 0, 0);
+        formationStartDate.setHours(0, 0, 0, 0);
+        if (sessionDate < formationStartDate) {
+            return res.status(400).json({
+                error: 'La date de la séance doit être égale ou postérieure à la date de début de la formation',
+                formationStartDate: formationExists.startDate
+            });
+        }
+
         // ASTBA Compliance: Check max 6 sessions per level
         const existingSessionsCount = await Session.countDocuments({ level });
         if (existingSessionsCount >= 6) {
@@ -106,7 +118,7 @@ router.post('/', [
         });
 
         await session.save();
-        await session.populate('formation', 'title description duration');
+        await session.populate('formation', 'title description duration color startDate');
         await session.populate('formateur', 'name email');
 
         res.status(201).json({
@@ -135,14 +147,28 @@ router.put('/:id', [
             return res.status(400).json({ errors: errors.array() });
         }
 
-        const session = await Session.findById(req.params.id);
+        const session = await Session.findById(req.params.id).populate('formation', 'startDate');
 
         if (!session) {
             return res.status(404).json({ error: 'Session not found' });
         }
 
-        // Update fields
+        // If date is being updated: session date must be >= formation start date
         const { level, date, startTime, endTime, maxParticipants } = req.body;
+        if (date && session.formation?.startDate) {
+            const sessionDate = new Date(date);
+            const formationStartDate = new Date(session.formation.startDate);
+            sessionDate.setHours(0, 0, 0, 0);
+            formationStartDate.setHours(0, 0, 0, 0);
+            if (sessionDate < formationStartDate) {
+                return res.status(400).json({
+                    error: 'La date de la séance doit être égale ou postérieure à la date de début de la formation',
+                    formationStartDate: session.formation.startDate
+                });
+            }
+        }
+
+        // Update fields
         if (level) session.level = level;
         if (date) session.date = date;
         if (startTime) session.startTime = startTime;
@@ -150,7 +176,7 @@ router.put('/:id', [
         if (maxParticipants) session.maxParticipants = maxParticipants;
 
         await session.save();
-        await session.populate('formation', 'title description duration');
+        await session.populate('formation', 'title description duration color startDate');
         await session.populate('formateur', 'name email');
         await session.populate('participants', 'name email');
 

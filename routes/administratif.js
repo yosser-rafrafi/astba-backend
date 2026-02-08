@@ -186,6 +186,13 @@ router.post('/certification/generate', authenticate, requireRoles('admin', 'Resp
     }
 });
 
+// Helper: parse "HH:MM" to hours
+function parseTimeToHours(timeStr) {
+    if (!timeStr || typeof timeStr !== 'string') return 0;
+    const [h, m] = timeStr.split(':').map(Number);
+    return (h || 0) + (m || 0) / 60;
+}
+
 // @route   GET /api/admin/stats
 // @desc    Get global statistics
 // @access  Private (Admin only)
@@ -193,13 +200,30 @@ router.get('/stats', authenticate, requireRoles('admin', 'Responsable', 'respons
     try {
         const totalUsers = await User.countDocuments();
         const pendingUsers = await User.countDocuments({ status: 'pending' });
-        const formations = await Formation.countDocuments();
+        const formations = await Formation.countDocuments({ active: true });
         const certificates = await Certificate.countDocuments();
+        const students = await User.countDocuments({ role: 'student', status: 'active' });
+
+        // Success rate: (certificates / students) * 100, or 0 if no students
+        const successRate = students > 0 ? Math.round((certificates / students) * 100) : 0;
+
+        // Total hours: sum of all session durations
+        const sessions = await Session.find().populate('formation', 'duration');
+        let totalHours = 0;
+        for (const s of sessions) {
+            const startH = parseTimeToHours(s.startTime);
+            const endH = parseTimeToHours(s.endTime);
+            totalHours += (endH - startH) > 0 ? (endH - startH) : (s.formation?.duration || 2);
+        }
+        totalHours = Math.round(totalHours);
 
         res.json({
             users: { total: totalUsers, pending: pendingUsers },
             formations,
-            certificates
+            certificates,
+            students,
+            successRate,
+            totalHours
         });
     } catch (error) {
         console.error('Get stats error:', error);
