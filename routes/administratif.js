@@ -6,7 +6,7 @@ const Session = require('../models/Session');
 const Attendance = require('../models/Attendance');
 const Level = require('../models/Level');
 const Certificate = require('../models/Certificate');
-const { authenticate, requireAdmin, requireRoles } = require('../middleware/auth');
+const { authenticate, requireAdmin, requireRoles, requireFormateur } = require('../middleware/auth');
 const PDFDocument = require('pdfkit');
 
 // @route   GET /api/admin/users
